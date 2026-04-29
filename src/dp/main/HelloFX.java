@@ -1,5 +1,9 @@
 package dp.main;
 
+import dp.DS.command.AddShapeCommand;
+import dp.DS.command.CommandManager;
+import dp.DS.command.EraseShapeCommand;
+import dp.DS.command.ICommand;
 import dp.DS.observer.*;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -13,7 +17,6 @@ import dp.DS.strategy.LogFile;
 
 public class HelloFX extends Application {
 
-    // Point de départ du dessin (mousePressed)
     private double startX, startY;
 
     public static void main(String[] args) {
@@ -26,17 +29,32 @@ public class HelloFX extends Application {
         Logger logger = Logger.getInstance();
         logger.log("Application demarree");
 
+        // --- Command Manager (deux piles : undo et redo) ---
+        CommandManager cmdManager = new CommandManager();
+
         BorderPane root = new BorderPane();
-        DrawingCanvas drawingCanvas = new DrawingCanvas(800, 200);
+        DrawingCanvas drawingCanvas = new DrawingCanvas(800, 400);
 
         ToolPalette palette = new ToolPalette(
+                // onRectangle
                 () -> logger.log("Shape selected: RECTANGLE"),
+                // onCircle
                 () -> logger.log("Shape selected: CIRCLE"),
+                // onLine
                 () -> logger.log("Shape selected: LINE"),
+                // onUndo — utilise la pile undo du CommandManager
                 () -> {
-                    drawingCanvas.removeLastShape();
-                    logger.log("Undo action triggered - shapes restantes: " + drawingCanvas.getShapeCount());
+                    cmdManager.undo();
+                    logger.log("Undo - shapes restantes: " + drawingCanvas.getShapeCount());
                 },
+                // onRedo — utilise la pile redo du CommandManager
+                () -> {
+                    cmdManager.redo();
+                    logger.log("Redo - shapes restantes: " + drawingCanvas.getShapeCount());
+                },
+                // onEraser (gomme)
+                () -> logger.log("Mode Gomme active"),
+                // onLoggerChange
                 selected -> {
                     switch (selected) {
                         case "LogConsole":
@@ -48,17 +66,16 @@ public class HelloFX extends Application {
                         case "LogDB":
                             logger.setStrategy(new LogDB());
                             break;
-                        default:
-                            break;
                     }
                     logger.log("Logger strategy changed to: " + selected);
                 }
         );
         palette.setSelectedLogger("LogConsole");
 
-        // Lien de l'Observer selon l'architecture
+        // Observer : palette → canvas
         palette.addObserver(drawingCanvas);
 
+        // --- Mouse events sur le canvas ---
         drawingCanvas.getCanvas().setOnMousePressed(e -> {
             startX = e.getX();
             startY = e.getY();
@@ -68,21 +85,32 @@ public class HelloFX extends Application {
             double endX = e.getX();
             double endY = e.getY();
 
-            IShape shape = palette.createShape(startX, startY, endX, endY);
-
-            if (shape != null) {
-                drawingCanvas.addShape(shape);
-                logger.log("Shape drawn: " + shape.toString());
+            if (palette.isEraserMode()) {
+                // --- GOMME : EraseShapeCommand ---
+                IShape lastShape = drawingCanvas.getLastShape();
+                if (lastShape != null) {
+                    ICommand cmd = new EraseShapeCommand(drawingCanvas, lastShape);
+                    cmdManager.executeCommand(cmd);
+                    logger.log("Gomme: forme effacee - " + lastShape.toString());
+                }
+            } else {
+                // --- DESSIN : AddShapeCommand ---
+                IShape shape = palette.createShape(startX, startY, endX, endY);
+                if (shape != null) {
+                    ICommand cmd = new AddShapeCommand(drawingCanvas, shape);
+                    cmdManager.executeCommand(cmd);
+                    logger.log("Shape drawn: " + shape.toString());
+                }
             }
         });
 
         root.setTop(palette.getView());
-        root.setBottom(drawingCanvas.getCanvas());
+        root.setCenter(drawingCanvas.getCanvas());
 
-        Scene scene = new Scene(root, 700, 450);
+        Scene scene = new Scene(root, 800, 500);
 
         primaryStage.setScene(scene);
-        primaryStage.setTitle("Dessiner des formes - Strategy + Singleton + Observer");
+        primaryStage.setTitle("Dessiner des Formes - JavaFX");
         primaryStage.show();
 
         logger.log("Interface graphique initialisee");

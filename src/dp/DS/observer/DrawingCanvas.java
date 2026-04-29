@@ -40,33 +40,52 @@ public class DrawingCanvas implements IObserver {
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
     }
 
+    /**
+     * Ajoute une forme et redessine le canvas.
+     */
     public void addShape(IShape shape) {
         shapes.add(shape);
-        shape.addObserver(this); // Canvas observe cette forme
-        shape.notifyObservers(); // Demande une mise à jour suite à l'ajout
+        shape.addObserver(this);
+        redraw();
     }
 
-    public void removeLastShape() {
-        if (!shapes.isEmpty()) {
-            IShape shape = shapes.remove(shapes.size() - 1);
-            shape.removeObserver(this);
-            this.update();
+    /**
+     * Retire une forme spécifique et redessine (utilisé par les commandes).
+     */
+    public void removeShape(IShape shape) {
+        shapes.remove(shape);
+        shape.removeObserver(this);
+        redraw();
+    }
+
+    /**
+     * Retourne la dernière forme ajoutée (pour la gomme).
+     */
+    public IShape getLastShape() {
+        if (shapes.isEmpty()) return null;
+        return shapes.get(shapes.size() - 1);
+    }
+
+    /**
+     * Redessine tout le canvas : efface + dessine toutes les formes.
+     */
+    public void redraw() {
+        clearCanvas();
+        GraphicsContext gc = canvas.getGraphicsContext2D();
+        for (IShape shape : shapes) {
+            shape.draw(gc);
         }
     }
 
     public void clearShapes() {
         for (IShape s : shapes) s.removeObserver(this);
         shapes.clear();
-        this.update();
+        redraw();
     }
 
     @Override
     public void update() {
-        clearCanvas();
-        GraphicsContext gc = canvas.getGraphicsContext2D();
-        for (IShape shape : shapes) {
-            shape.draw(gc);
-        }
+        redraw();
     }
 
     public int getShapeCount() {
