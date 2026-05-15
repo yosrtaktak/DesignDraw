@@ -4,9 +4,23 @@ import dp.DS.command.AddShapeCommand;
 import dp.DS.command.CommandManager;
 import dp.DS.command.EraseShapeCommand;
 import dp.DS.command.ICommand;
+import dp.DS.command.ResizeShapeCommand;
+import dp.DS.graph.BFSStrategy;
+import dp.DS.graph.BellmanFordStrategy;
+import dp.DS.graph.DijkstraStrategy;
+import dp.DS.graph.Graph;
+import dp.DS.graph.GraphBuilder;
+import dp.DS.graph.PathCalculator;
+import dp.DS.graph.PathResult;
 import dp.DS.observer.*;
+import dp.DS.persistence.DrawingRepository;
+
+import java.util.ArrayList;
+import java.util.List;
+
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
@@ -18,6 +32,9 @@ import dp.DS.strategy.LogFile;
 public class HelloFX extends Application {
 
     private double startX, startY;
+    private IShape resizeTarget;
+    /** Premier nœud sélectionné en mode "plus court chemin" (centre [x,y]) ou null. */
+    private double[] pathFirst;
 
     public static void main(String[] args) {
         launch(args);
@@ -32,8 +49,25 @@ public class HelloFX extends Application {
         // --- Command Manager (deux piles : undo et redo) ---
         CommandManager cmdManager = new CommandManager();
 
+        // --- Strategy : calcul du plus court chemin (Dijkstra par defaut) ---
+        final PathCalculator pathCalculator = new PathCalculator();
+        final GraphBuilder graphBuilder = new GraphBuilder();
+
+        // --- DAO : enregistrement / ouverture du dessin (PostgreSQL) ---
+        final DrawingRepository repository = new DrawingRepository();
+
         BorderPane root = new BorderPane();
         DrawingCanvas drawingCanvas = new DrawingCanvas(800, 400);
+
+        // --- Barre de statut : affiche le resultat des actions (ex: calcul) ---
+        final Label statusBar = new Label("Pret");
+        statusBar.setMaxWidth(Double.MAX_VALUE);
+        statusBar.setStyle(
+                "-fx-background-color: #2b2b2b;" +
+                "-fx-text-fill: #f0f0f0;" +
+                "-fx-padding: 6 12 6 12;" +
+                "-fx-font-size: 13px;"
+        );
 
         ToolPalette palette = new ToolPalette(
                 // onRectangle
@@ -54,6 +88,8 @@ public class HelloFX extends Application {
                 },
                 // onEraser (gomme)
                 () -> logger.log("Mode Gomme active"),
+                // onResize
+                () -> logger.log("Mode Redimensionner active"),
                 // onLoggerChange
                 selected -> {
                     switch (selected) {
@@ -68,6 +104,58 @@ public class HelloFX extends Application {
                             break;
                     }
                     logger.log("Logger strategy changed to: " + selected);
+                },
+                // onPath — entre en mode "plus court chemin"
+                () -> {
+                    pathFirst = null;
+                    drawingCanvas.clearHighlight();
+                    drawingCanvas.redraw();
+                    statusBar.setText("Mode Plus court chemin : cliquez 2 formes (les lignes = arêtes, sinon distance directe)");
+                    logger.log("Mode Plus court chemin active");
+                },
+                // onAlgoChange — Strategy : choisit l'algorithme du plus court chemin
+                algo -> {
+                    switch (algo) {
+                        case "Dijkstra":
+                            pathCalculator.setStrategy(new DijkstraStrategy());
+                            break;
+                        case "Bellman-Ford":
+                            pathCalculator.setStrategy(new BellmanFordStrategy());
+                            break;
+                        case "BFS":
+                            pathCalculator.setStrategy(new BFSStrategy());
+                            break;
+                    }
+                    statusBar.setText("Algorithme sélectionné : " + algo);
+                    logger.log("Algorithme plus court chemin: " + algo);
+                },
+                // onSave — enregistre le dessin dans PostgreSQL (DAO)
+                () -> {
+                    int n = repository.save(drawingCanvas.getShapes());
+                    if (n >= 0) {
+                        statusBar.setText("Dessin enregistré dans la base — " + n + " forme(s)");
+                        logger.log("Dessin enregistre en base: " + n + " formes");
+                    } else {
+                        statusBar.setText("Erreur : enregistrement impossible (base indisponible)");
+                        logger.log("Erreur enregistrement dessin (base indisponible)");
+                    }
+                },
+                // onOpen — recharge le dessin depuis PostgreSQL (DAO)
+                () -> {
+                    List<IShape> loaded = repository.load();
+                    if (loaded == null) {
+                        statusBar.setText("Erreur : ouverture impossible (base indisponible)");
+                        logger.log("Erreur ouverture dessin (base indisponible)");
+                        return;
+                    }
+                    drawingCanvas.clearHighlight();
+                    drawingCanvas.clearShapes();
+                    for (IShape s : loaded) {
+                        drawingCanvas.addShape(s);
+                    }
+                    pathFirst = null;
+                    statusBar.setText("Dessin ouvert depuis la base — " + loaded.size() + " forme(s)");
+                    logger.log("Dessin ouvert depuis la base: " + loaded.size() + " formes");
                 }
         );
         palette.setSelectedLogger("LogConsole");
@@ -79,19 +167,90 @@ public class HelloFX extends Application {
         drawingCanvas.getCanvas().setOnMousePressed(e -> {
             startX = e.getX();
             startY = e.getY();
+            if (palette.isResizeMode()) {
+                resizeTarget = drawingCanvas.findShapeAt(startX, startY);
+                if (resizeTarget == null) {
+                    resizeTarget = drawingCanvas.getLastShape();
+                }
+            }
         });
 
         drawingCanvas.getCanvas().setOnMouseReleased(e -> {
             double endX = e.getX();
             double endY = e.getY();
 
-            if (palette.isEraserMode()) {
-                // --- GOMME : EraseShapeCommand ---
-                IShape lastShape = drawingCanvas.getLastShape();
-                if (lastShape != null) {
-                    ICommand cmd = new EraseShapeCommand(drawingCanvas, lastShape);
+            // --- ETUDE DE CAS : plus court chemin (Strategy) ---
+            if (palette.isPathMode()) {
+                IShape picked = drawingCanvas.findShapeAt(endX, endY);
+                if (picked == null || "LINE".equals(picked.shapeKind())) {
+                    statusBar.setText("Plus court chemin : cliquez sur une forme (nœud), pas une ligne");
+                    logger.log("Plus court chemin: cliquez sur une forme noeud (pas une ligne)");
+                    return;
+                }
+                if (pathFirst == null) {
+                    pathFirst = new double[]{ picked.getCenterX(), picked.getCenterY() };
+                    drawingCanvas.clearHighlight();
+                    drawingCanvas.redraw();
+                    statusBar.setText("Nœud source sélectionné — cliquez le nœud cible");
+                    logger.log("Plus court chemin: noeud source selectionne");
+                    return;
+                }
+                Graph g = graphBuilder.build(drawingCanvas.getShapes());
+                int src = g.nearestNode(pathFirst[0], pathFirst[1], 1e9);
+                int tgt = g.nearestNode(picked.getCenterX(), picked.getCenterY(), 1e9);
+                if (src == -1 || tgt == -1) {
+                    statusBar.setText("Cliquez bien sur une forme (nœud)");
+                    pathFirst = null;
+                    return;
+                }
+                if (src == tgt) {
+                    statusBar.setText("Sélectionnez deux formes différentes");
+                    pathFirst = null;
+                    return;
+                }
+                PathResult res = pathCalculator.findPath(g, src, tgt);
+                if (res.isFound() && res.getNodes().size() >= 2) {
+                    List<double[]> pts = new ArrayList<>();
+                    for (int idx : res.getNodes()) pts.add(g.nodePosition(idx));
+                    drawingCanvas.setHighlightPath(pts);
+                    String algoName = pathCalculator.getStrategy().getClass().getSimpleName()
+                            .replace("Strategy", "");
+                    String msg = algoName + " : chemin " + res.getNodes()
+                            + "  —  distance = " + String.format("%.1f", res.getDistance());
+                    statusBar.setText(msg);
+                    logger.log("Plus court chemin (" + algoName + ") = " + res.getNodes()
+                            + " | distance = " + String.format("%.1f", res.getDistance()));
+                } else {
+                    drawingCanvas.clearHighlight();
+                    drawingCanvas.redraw();
+                    statusBar.setText("Aucun chemin : nœuds dans des parties non reliées (reliez-les par une ligne)");
+                    logger.log("Plus court chemin: aucun chemin (composants non relies)");
+                }
+                pathFirst = null;
+                return;
+            }
+
+            // Toute autre action efface le surlignage du chemin precedent.
+            drawingCanvas.clearHighlight();
+
+            if (palette.isResizeMode()) {
+                if (resizeTarget != null) {
+                    int size = palette.getSelectedSize();
+                    ICommand cmd = new ResizeShapeCommand(drawingCanvas, resizeTarget, size);
                     cmdManager.executeCommand(cmd);
-                    logger.log("Gomme: forme effacee - " + lastShape.toString());
+                    statusBar.setText("Forme redimensionnée à la taille " + size);
+                    logger.log("Redimensionnement -> taille " + size + " : " + resizeTarget.toString());
+                }
+                resizeTarget = null;
+            } else if (palette.isEraserMode()) {
+                // --- GOMME : efface la forme selectionnee (sous le curseur) ---
+                IShape target = drawingCanvas.findShapeAt(endX, endY);
+                if (target == null) target = drawingCanvas.findShapeAt(startX, startY);
+                if (target != null) {
+                    ICommand cmd = new EraseShapeCommand(drawingCanvas, target);
+                    cmdManager.executeCommand(cmd);
+                    statusBar.setText("Forme effacée — " + target.shapeKind());
+                    logger.log("Gomme: forme effacee - " + target.toString());
                 }
             } else {
                 // --- DESSIN : AddShapeCommand ---
@@ -99,15 +258,17 @@ public class HelloFX extends Application {
                 if (shape != null) {
                     ICommand cmd = new AddShapeCommand(drawingCanvas, shape);
                     cmdManager.executeCommand(cmd);
+                    statusBar.setText("Forme dessinée — " + shape.shapeKind());
                     logger.log("Shape drawn: " + shape.toString());
                 }
             }
         });
 
         root.setTop(palette.getView());
-        root.setCenter(drawingCanvas.getCanvas());
+        root.setCenter(drawingCanvas.getView());
+        root.setBottom(statusBar);
 
-        Scene scene = new Scene(root, 800, 500);
+        Scene scene = new Scene(root, 1200, 750);
 
         primaryStage.setScene(scene);
         primaryStage.setTitle("Dessiner des Formes - JavaFX");

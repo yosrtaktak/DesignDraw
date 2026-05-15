@@ -16,7 +16,7 @@ import java.util.List;
  */
 public class LineShape3D implements IShape {
 
-    private final double startX, startY, endX, endY;
+    private double startX, startY, endX, endY;
     private final List<IObserver> observers = new ArrayList<>();
 
     public LineShape3D(double startX, double startY, double endX, double endY) {
@@ -33,26 +33,86 @@ public class LineShape3D implements IShape {
     @Override
     public void notifyObservers() { for (IObserver obs : observers) obs.update(); }
 
+    /**
+     * Trait 3D dérivé de la couleur de bordure choisie
+     * (appliquée par BorderColorDecorator via gc.setStroke).
+     */
     @Override
     public void draw(GraphicsContext gc) {
+        Color base = (gc.getStroke() instanceof Color)
+                ? (Color) gc.getStroke() : Color.rgb(60, 60, 180);
         gc.save();
 
-        // Ombre portée
+        // Ombre portée + trait principal de la couleur choisie
         gc.setEffect(new DropShadow(6, 3, 3, Color.rgb(0, 0, 0, 0.4)));
-
-        // Ligne épaisse avec dégradé simulé (trait principal + trait clair)
-        gc.setStroke(Color.rgb(60, 60, 180));
+        gc.setStroke(base);
         gc.setLineWidth(4);
         gc.strokeLine(startX, startY, endX, endY);
 
-        // Reflet clair au-dessus
+        // Reflet clair au-dessus (variante claire de la couleur choisie)
         gc.setEffect(null);
-        gc.setStroke(Color.rgb(160, 180, 255, 0.6));
+        gc.setStroke(base.brighter());
         gc.setLineWidth(1.5);
         gc.strokeLine(startX, startY - 1, endX, endY - 1);
 
         gc.restore();
     }
+
+    @Override
+    public boolean contains(double px, double py) {
+        double dx = endX - startX;
+        double dy = endY - startY;
+        double len2 = dx * dx + dy * dy;
+        if (len2 == 0) {
+            double ex = px - startX, ey = py - startY;
+            return ex * ex + ey * ey <= 36;
+        }
+        double t = ((px - startX) * dx + (py - startY) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        double projX = startX + t * dx;
+        double projY = startY + t * dy;
+        double ex = px - projX, ey = py - projY;
+        return ex * ex + ey * ey <= 36;
+    }
+
+    @Override
+    public void resize(double newEndX, double newEndY) {
+        this.endX = newEndX;
+        this.endY = newEndY;
+    }
+
+    @Override
+    public void resizeTo(double size) {
+        double s = Math.max(1, size);
+        double dx = endX - startX;
+        double dy = endY - startY;
+        double len = Math.sqrt(dx * dx + dy * dy);
+        if (len == 0) {
+            this.endX = startX + s;
+            this.endY = startY;
+        } else {
+            this.endX = startX + dx / len * s;
+            this.endY = startY + dy / len * s;
+        }
+    }
+
+    @Override
+    public double getEndX() { return endX; }
+
+    @Override
+    public double getEndY() { return endY; }
+
+    @Override
+    public String shapeKind() { return "LINE"; }
+
+    @Override
+    public boolean is3D() { return true; }
+
+    @Override
+    public double getStartX() { return startX; }
+
+    @Override
+    public double getStartY() { return startY; }
 
     @Override
     public String toString() {

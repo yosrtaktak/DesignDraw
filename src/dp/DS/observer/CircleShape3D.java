@@ -16,7 +16,7 @@ import java.util.List;
  */
 public class CircleShape3D implements IShape {
 
-    private final double x, y, width, height;
+    private double x, y, width, height;
     private final List<IObserver> observers = new ArrayList<>();
 
     public CircleShape3D(double x, double y, double width, double height) {
@@ -33,29 +33,90 @@ public class CircleShape3D implements IShape {
     @Override
     public void notifyObservers() { for (IObserver obs : observers) obs.update(); }
 
+    /**
+     * Corps 3D (sphère) : dégradé radial dérivé de la couleur de
+     * remplissage choisie (appliquée par FillColorDecorator).
+     */
     @Override
-    public void draw(GraphicsContext gc) {
+    public void fillShape(GraphicsContext gc) {
+        Color base = (gc.getFill() instanceof Color)
+                ? (Color) gc.getFill() : Color.rgb(100, 150, 255);
         gc.save();
-
-        // Ombre portée pour effet 3D
         gc.setEffect(new DropShadow(10, 4, 4, Color.rgb(0, 0, 0, 0.4)));
-
-        // Dégradé radial pour simuler une sphère
         RadialGradient gradient = new RadialGradient(
                 0, 0,
                 x + width * 0.35, y + height * 0.35,   // centre du reflet (en haut à gauche)
                 Math.max(width, height) * 0.6,           // rayon
                 false, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(180, 210, 255)),   // reflet clair
-                new Stop(0.4, Color.rgb(100, 150, 255)), // bleu moyen
-                new Stop(1, Color.rgb(40, 70, 160))      // bleu foncé
+                new Stop(0, base.brighter().brighter()), // reflet clair
+                new Stop(0.4, base),                     // couleur choisie
+                new Stop(1, base.darker())               // ombre
         );
-
         gc.setFill(gradient);
         gc.fillOval(x, y, width, height);
-
         gc.restore();
     }
+
+    /**
+     * Contour : utilise la couleur de bordure choisie
+     * (appliquée par BorderColorDecorator via gc.setStroke).
+     */
+    @Override
+    public void draw(GraphicsContext gc) {
+        gc.save();
+        gc.setLineWidth(1.5);
+        gc.strokeOval(x, y, width, height);
+        gc.restore();
+    }
+
+    @Override
+    public boolean contains(double px, double py) {
+        if (width <= 0 || height <= 0) return false;
+        double cx = x + width / 2.0;
+        double cy = y + height / 2.0;
+        double rx = width / 2.0;
+        double ry = height / 2.0;
+        double dx = (px - cx) / rx;
+        double dy = (py - cy) / ry;
+        return dx * dx + dy * dy <= 1.0;
+    }
+
+    @Override
+    public void resize(double endX, double endY) {
+        this.width = Math.max(1, endX - x);
+        this.height = Math.max(1, endY - y);
+    }
+
+    @Override
+    public void resizeTo(double size) {
+        double s = Math.max(1, size);
+        this.width = s;
+        this.height = s;
+    }
+
+    @Override
+    public double getEndX() { return x + width; }
+
+    @Override
+    public double getEndY() { return y + height; }
+
+    @Override
+    public String shapeKind() { return "CIRCLE"; }
+
+    @Override
+    public boolean is3D() { return true; }
+
+    @Override
+    public double getCenterX() { return x + width / 2.0; }
+
+    @Override
+    public double getCenterY() { return y + height / 2.0; }
+
+    @Override
+    public double getStartX() { return x; }
+
+    @Override
+    public double getStartY() { return y; }
 
     @Override
     public String toString() {
