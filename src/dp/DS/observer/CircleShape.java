@@ -28,7 +28,7 @@ public class CircleShape implements IShape {
     public void notifyObservers() { for (IObserver obs : observers) obs.update(); }
 
     @Override
-    public void draw(GraphicsContext gc) {
+    public void strokeShape(GraphicsContext gc) {
         gc.strokeOval(x, y, width, height);
     }
 

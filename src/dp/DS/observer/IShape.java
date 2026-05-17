@@ -3,9 +3,18 @@ package dp.DS.observer;
 import javafx.scene.canvas.GraphicsContext;
 
 public interface IShape extends IObservable {
-    void draw(GraphicsContext gc);
+    /**
+     * Rendu de base : par défaut rien. Le rendu visible est ajouté par les
+     * décorateurs — FillColorDecorator (remplissage) et BorderColorDecorator
+     * (contour). Une forme sans aucun décorateur n'affiche donc rien.
+     */
+    default void draw(GraphicsContext gc) { }
 
+    /** Remplit l'intérieur de la forme (utilisé par FillColorDecorator). */
     default void fillShape(GraphicsContext gc) { }
+
+    /** Trace le contour de la forme (utilisé par BorderColorDecorator). */
+    default void strokeShape(GraphicsContext gc) { }
 
     default boolean contains(double x, double y) { return false; }
 

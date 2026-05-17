@@ -21,8 +21,14 @@ public class BorderColorDecorator extends ShapeDecorator {
 
     @Override
     public void draw(GraphicsContext gc) {
-        gc.setStroke(borderColor);
+        // Rend d'abord le contenu encapsulé (le remplissage si un
+        // FillColorDecorator est dessous), puis ajoute le contour.
         wrapped.draw(gc);
+        gc.save();
+        gc.setStroke(borderColor);
+        gc.setLineWidth(2);
+        wrapped.strokeShape(gc);
+        gc.restore();
     }
 
     @Override

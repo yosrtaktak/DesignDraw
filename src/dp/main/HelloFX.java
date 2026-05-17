@@ -17,10 +17,14 @@ import dp.DS.persistence.DrawingRepository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
@@ -35,6 +39,8 @@ public class HelloFX extends Application {
     private IShape resizeTarget;
     /** Premier nœud sélectionné en mode "plus court chemin" (centre [x,y]) ou null. */
     private double[] pathFirst;
+    /** Nom du dessin courant (dernier enregistré / ouvert) ou null. */
+    private String currentDrawingName;
 
     public static void main(String[] args) {
         launch(args);
@@ -129,20 +135,68 @@ public class HelloFX extends Application {
                     statusBar.setText("Algorithme sélectionné : " + algo);
                     logger.log("Algorithme plus court chemin: " + algo);
                 },
-                // onSave — enregistre le dessin dans PostgreSQL (DAO)
+                // onSave — enregistre le dessin nommé dans PostgreSQL (DAO)
                 () -> {
-                    int n = repository.save(drawingCanvas.getShapes());
+                    TextInputDialog dlg = new TextInputDialog(
+                            currentDrawingName == null ? "MonDessin" : currentDrawingName);
+                    dlg.initOwner(primaryStage);
+                    dlg.setTitle("Enregistrer le dessin");
+                    dlg.setHeaderText("Nom du dessin (un nom existant sera remplacé)");
+                    dlg.setContentText("Nom :");
+                    Optional<String> res = dlg.showAndWait();
+                    if (!res.isPresent()) {
+                        statusBar.setText("Enregistrement annulé");
+                        return;
+                    }
+                    String name = res.get().trim();
+                    if (name.isEmpty()) {
+                        statusBar.setText("Nom vide — enregistrement annulé");
+                        return;
+                    }
+                    int n = repository.save(name, drawingCanvas.getShapes());
                     if (n >= 0) {
-                        statusBar.setText("Dessin enregistré dans la base — " + n + " forme(s)");
-                        logger.log("Dessin enregistre en base: " + n + " formes");
+                        currentDrawingName = name;
+                        statusBar.setText("Dessin « " + name + " » enregistré — "
+                                + n + " forme(s)");
+                        logger.log("Dessin enregistre en base: " + name
+                                + " (" + n + " formes)");
                     } else {
                         statusBar.setText("Erreur : enregistrement impossible (base indisponible)");
                         logger.log("Erreur enregistrement dessin (base indisponible)");
                     }
                 },
-                // onOpen — recharge le dessin depuis PostgreSQL (DAO)
+                // onOpen — choisit puis recharge un dessin enregistré (DAO)
                 () -> {
-                    List<IShape> loaded = repository.load();
+                    List<String> names = repository.listDrawings();
+                    if (names == null) {
+                        statusBar.setText("Erreur : ouverture impossible (base indisponible)");
+                        logger.log("Erreur ouverture dessin (base indisponible)");
+                        return;
+                    }
+                    if (names.isEmpty()) {
+                        Alert info = new Alert(Alert.AlertType.INFORMATION,
+                                "Aucun dessin n'est encore enregistré dans la base.");
+                        info.initOwner(primaryStage);
+                        info.setHeaderText("Ouvrir un dessin");
+                        info.showAndWait();
+                        statusBar.setText("Aucun dessin enregistré");
+                        return;
+                    }
+                    ChoiceDialog<String> dlg = new ChoiceDialog<>(
+                            names.contains(currentDrawingName)
+                                    ? currentDrawingName : names.get(0),
+                            names);
+                    dlg.initOwner(primaryStage);
+                    dlg.setTitle("Ouvrir un dessin");
+                    dlg.setHeaderText("Choisissez un dessin enregistré");
+                    dlg.setContentText("Dessin :");
+                    Optional<String> sel = dlg.showAndWait();
+                    if (!sel.isPresent()) {
+                        statusBar.setText("Ouverture annulée");
+                        return;
+                    }
+                    String name = sel.get();
+                    List<IShape> loaded = repository.load(name);
                     if (loaded == null) {
                         statusBar.setText("Erreur : ouverture impossible (base indisponible)");
                         logger.log("Erreur ouverture dessin (base indisponible)");
@@ -154,8 +208,11 @@ public class HelloFX extends Application {
                         drawingCanvas.addShape(s);
                     }
                     pathFirst = null;
-                    statusBar.setText("Dessin ouvert depuis la base — " + loaded.size() + " forme(s)");
-                    logger.log("Dessin ouvert depuis la base: " + loaded.size() + " formes");
+                    currentDrawingName = name;
+                    statusBar.setText("Dessin « " + name + " » ouvert — "
+                            + loaded.size() + " forme(s)");
+                    logger.log("Dessin ouvert depuis la base: " + name
+                            + " (" + loaded.size() + " formes)");
                 }
         );
         palette.setSelectedLogger("LogConsole");

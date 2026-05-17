@@ -62,7 +62,7 @@ public class CircleShape3D implements IShape {
      * (appliquée par BorderColorDecorator via gc.setStroke).
      */
     @Override
-    public void draw(GraphicsContext gc) {
+    public void strokeShape(GraphicsContext gc) {
         gc.save();
         gc.setLineWidth(1.5);
         gc.strokeOval(x, y, width, height);

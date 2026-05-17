@@ -31,6 +31,11 @@ public abstract class ShapeDecorator implements IShape {
     }
 
     @Override
+    public void strokeShape(GraphicsContext gc) {
+        wrapped.strokeShape(gc);
+    }
+
+    @Override
     public boolean contains(double x, double y) { return wrapped.contains(x, y); }
 
     @Override

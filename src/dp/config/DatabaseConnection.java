@@ -17,9 +17,10 @@ public class DatabaseConnection {
     private static DatabaseConnection instance;
     private Connection connection;
 
-    private static final String URL = "jdbc:postgresql://localhost:5432/logdb";
+    private static final String HOST = "jdbc:postgresql://localhost:5432/";
+    private static final String DB_NAME = "logdb";
     private static final String USER = "postgres";
-    private static final String PASSWORD = "0000";
+    private static final String PASSWORD = "admin";
 
     /**
      * Constructeur privé (Singleton).
@@ -28,13 +29,34 @@ public class DatabaseConnection {
     private DatabaseConnection() {
         try {
             Class.forName("org.postgresql.Driver");
-            this.connection = DriverManager.getConnection(URL, USER, PASSWORD);
+            this.connection = openConnection();
             System.out.println("[DB] Connexion à PostgreSQL établie avec succès.");
             initTable();
         } catch (ClassNotFoundException e) {
             System.err.println("[DB] Driver PostgreSQL introuvable: " + e.getMessage());
         } catch (SQLException e) {
             System.err.println("[DB] Erreur de connexion: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Ouvre la connexion à la base {@code logdb}, en la créant si elle
+     * n'existe pas encore (via la base de maintenance "postgres").
+     */
+    private Connection openConnection() throws SQLException {
+        try {
+            return DriverManager.getConnection(HOST + DB_NAME, USER, PASSWORD);
+        } catch (SQLException e) {
+            // 3D000 = "database does not exist" : on la crée puis on réessaie.
+            if (!"3D000".equals(e.getSQLState())) throw e;
+            System.out.println("[DB] Base '" + DB_NAME + "' absente — création...");
+            try (Connection admin =
+                         DriverManager.getConnection(HOST + "postgres", USER, PASSWORD);
+                 Statement st = admin.createStatement()) {
+                st.executeUpdate("CREATE DATABASE " + DB_NAME);
+                System.out.println("[DB] Base '" + DB_NAME + "' créée.");
+            }
+            return DriverManager.getConnection(HOST + DB_NAME, USER, PASSWORD);
         }
     }
 

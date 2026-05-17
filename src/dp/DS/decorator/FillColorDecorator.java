@@ -21,11 +21,12 @@ public class FillColorDecorator extends ShapeDecorator {
 
     @Override
     public void draw(GraphicsContext gc) {
+        // Remplissage seul — le contour est la responsabilité de
+        // BorderColorDecorator (et n'est ajouté que s'il est présent).
         gc.save();
         gc.setFill(fillColor);
         wrapped.fillShape(gc);
         gc.restore();
-        wrapped.draw(gc);
     }
 
     @Override

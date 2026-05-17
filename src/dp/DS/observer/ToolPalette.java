@@ -265,11 +265,17 @@ public class ToolPalette extends Pane implements IObservable {
 
         boolean isLine = "LINE".equals(selectedShapeType);
 
-        if (cbFill.isSelected() && !isLine) {
-            shape = new FillColorDecorator(shape, fillColorPicker.getValue());
-        }
-        if (cbBorder.isSelected() || isLine) {
-            shape = new BorderColorDecorator(shape, borderColorPicker.getValue());
+        if (isLine) {
+            // Une ligne n'a pas de remplissage : sa couleur = le sélecteur "Couleur".
+            shape = new BorderColorDecorator(shape, fillColorPicker.getValue());
+        } else {
+            if (cbFill.isSelected()) {
+                shape = new FillColorDecorator(shape, fillColorPicker.getValue());
+            }
+            // La bordure n'est appliquée que si la case est cochée (plus forcée).
+            if (cbBorder.isSelected()) {
+                shape = new BorderColorDecorator(shape, borderColorPicker.getValue());
+            }
         }
         return shape;
     }

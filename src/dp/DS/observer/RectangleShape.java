@@ -28,7 +28,7 @@ public class RectangleShape implements IShape {
     public void notifyObservers() { for (IObserver obs : observers) obs.update(); }
 
     @Override
-    public void draw(GraphicsContext gc) {
+    public void strokeShape(GraphicsContext gc) {
         gc.strokeRect(x, y, width, height);
     }
 

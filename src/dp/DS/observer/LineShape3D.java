@@ -38,7 +38,7 @@ public class LineShape3D implements IShape {
      * (appliquée par BorderColorDecorator via gc.setStroke).
      */
     @Override
-    public void draw(GraphicsContext gc) {
+    public void strokeShape(GraphicsContext gc) {
         Color base = (gc.getStroke() instanceof Color)
                 ? (Color) gc.getStroke() : Color.rgb(60, 60, 180);
         gc.save();

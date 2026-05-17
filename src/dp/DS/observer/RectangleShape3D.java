@@ -59,7 +59,7 @@ public class RectangleShape3D implements IShape {
      * (appliquée par BorderColorDecorator via gc.setStroke).
      */
     @Override
-    public void draw(GraphicsContext gc) {
+    public void strokeShape(GraphicsContext gc) {
         gc.save();
         gc.setLineWidth(1.5);
         gc.strokeRect(x, y, width, height);
