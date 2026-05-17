@@ -201,45 +201,38 @@ public class ToolPalette extends Pane implements IObservable {
         styleButton(btnSave, true);
         styleButton(btnOpen, true);
 
-        // --- Layout : sections organisées et étiquetées dans la barre ---
-        HBox formes = group(btnRectangle, btnCircle, btnLine);
-        HBox dimension = group(rb2D, rb3D,
-                new Separator(Orientation.VERTICAL),
-                lblResize, comboResize, cbFixedSize);
-        HBox apparence = group(lblFill, fillColorPicker, cbFill,
-                new Separator(Orientation.VERTICAL),
-                lblBorder, cbBorder, borderColorPicker);
-        HBox edition = group(btnUndo, btnRedo, btnEraser);
-        HBox graphe = group(btnPath, lblAlgo, comboAlgo);
-        HBox fichier = group(btnSave, btnOpen);
-        HBox journal = group(lblLogger, comboLogger);
-
-        FlowPane bar = new FlowPane(12, 12,
-                section("Formes", formes),
-                section("Dimension", dimension),
-                section("Apparence", apparence),
-                section("Édition", edition),
-                section("Graphe", graphe),
-                section("Fichier", fichier),
-                section("Journal", journal)
-        );
+        // --- Layout : sections étiquetées, barre compacte (peu d'espace) ---
+        FlowPane bar = new FlowPane(10, 4);
         bar.setAlignment(Pos.CENTER_LEFT);
+        bar.getChildren().addAll(
+                section("Formes", group(btnRectangle, btnCircle, btnLine)), sep(),
+                section("Dimension", group(rb2D, rb3D,
+                        new Separator(Orientation.VERTICAL),
+                        lblResize, comboResize, cbFixedSize)), sep(),
+                section("Apparence", group(lblFill, fillColorPicker, cbFill,
+                        new Separator(Orientation.VERTICAL),
+                        lblBorder, cbBorder, borderColorPicker)), sep(),
+                section("Édition", group(btnUndo, btnRedo, btnEraser)), sep(),
+                section("Graphe", group(btnPath, lblAlgo, comboAlgo)), sep(),
+                section("Fichier", group(btnSave, btnOpen)), sep(),
+                section("Journal", group(lblLogger, comboLogger))
+        );
 
         root = new VBox(bar);
-        root.setPadding(new Insets(12));
+        root.setPadding(new Insets(5, 8, 5, 8));
         root.setStyle(
-                "-fx-background-color: linear-gradient(to bottom, #F7F8FA, #ECEFF1);" +
+                "-fx-background-color: #EEF1F4;" +
                 "-fx-border-color: #D7DBE0;" +
                 "-fx-border-width: 0 0 1 0;" +
-                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 10, 0, 0, 3);"
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 6, 0, 0, 2);"
         );
     }
 
     // --- Helpers de présentation (purement visuels) ---
 
     private static final String BTN_BASE =
-            "-fx-background-radius: 7; -fx-border-radius: 7; -fx-cursor: hand;" +
-            "-fx-padding: 6 14 6 14; -fx-font-size: 12px;";
+            "-fx-background-radius: 6; -fx-border-radius: 6; -fx-cursor: hand;" +
+            "-fx-padding: 3 9 3 9; -fx-font-size: 11px;";
 
     private static String btnStyle(boolean primary, boolean hover) {
         if (primary) {
@@ -260,26 +253,24 @@ public class ToolPalette extends Pane implements IObservable {
 
     /** Regroupe des contrôles horizontalement, alignés et espacés. */
     private static HBox group(Node... items) {
-        HBox h = new HBox(8, items);
+        HBox h = new HBox(6, items);
         h.setAlignment(Pos.CENTER_LEFT);
         return h;
     }
 
-    /** Encadre un groupe dans une « carte » titrée. */
-    private static VBox section(String title, Node content) {
+    /** Petit intitulé de section suivi de ses contrôles, sur une seule ligne. */
+    private static Node section(String title, Node content) {
         Label cap = new Label(title.toUpperCase());
-        cap.setStyle("-fx-font-size: 10px; -fx-font-weight: bold;"
-                + "-fx-text-fill: #6B7280;");
-        VBox box = new VBox(6, cap, content);
-        box.setPadding(new Insets(8, 12, 8, 12));
-        box.setStyle(
-                "-fx-background-color: white;" +
-                "-fx-background-radius: 10;" +
-                "-fx-border-color: #E5E7EB;" +
-                "-fx-border-radius: 10;" +
-                "-fx-border-width: 1;"
-        );
-        return box;
+        cap.setStyle("-fx-font-size: 9px; -fx-font-weight: bold;"
+                + "-fx-text-fill: #98A0AC;");
+        HBox h = new HBox(6, cap, content);
+        h.setAlignment(Pos.CENTER_LEFT);
+        return h;
+    }
+
+    /** Séparateur vertical fin entre deux sections. */
+    private static Separator sep() {
+        return new Separator(Orientation.VERTICAL);
     }
 
     private void updateFactory() {

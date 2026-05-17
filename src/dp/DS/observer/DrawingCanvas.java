@@ -55,7 +55,7 @@ public class DrawingCanvas implements IObserver {
      */
     public void clearCanvas() {
         GraphicsContext gc = canvas.getGraphicsContext2D();
-        gc.setFill(Color.YELLOW);
+        gc.setFill(Color.WHITE);
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
     }
 
