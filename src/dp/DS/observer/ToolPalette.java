@@ -25,6 +25,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.Separator;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.Node;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
@@ -188,40 +190,96 @@ public class ToolPalette extends Pane implements IObservable {
 
         comboLogger.setOnAction(e -> onLoggerChange.accept(comboLogger.getValue()));
 
-        // --- Layout : barre d'outils sur deux lignes pour eviter le tassement ---
-        HBox rowDraw = new HBox(8,
-                btnRectangle, btnCircle, btnLine,
-                new Separator(Orientation.VERTICAL),
-                rb2D, rb3D,
-                new Separator(Orientation.VERTICAL),
-                lblFill, fillColorPicker, cbFill,
-                new Separator(Orientation.VERTICAL),
-                lblBorder, cbBorder, borderColorPicker,
-                new Separator(Orientation.VERTICAL),
-                cbFixedSize
-        );
-        HBox rowActions = new HBox(8,
-                btnUndo, btnRedo, btnEraser,
-                new Separator(Orientation.VERTICAL),
-                lblResize, comboResize,
-                new Separator(Orientation.VERTICAL),
-                btnPath, lblAlgo, comboAlgo,
-                new Separator(Orientation.VERTICAL),
-                btnSave, btnOpen,
-                new Separator(Orientation.VERTICAL),
-                lblLogger, comboLogger
-        );
-        rowDraw.setAlignment(Pos.CENTER_LEFT);
-        rowActions.setAlignment(Pos.CENTER_LEFT);
+        // --- Style des boutons (visuel uniquement, aucun changement de logique) ---
+        styleButton(btnRectangle, false);
+        styleButton(btnCircle, false);
+        styleButton(btnLine, false);
+        styleButton(btnUndo, false);
+        styleButton(btnRedo, false);
+        styleButton(btnEraser, false);
+        styleButton(btnPath, true);
+        styleButton(btnSave, true);
+        styleButton(btnOpen, true);
 
-        root = new VBox(8, rowDraw, rowActions);
-        root.setPadding(new Insets(10));
-        root.setStyle(
-                "-fx-background-color: #f4f4f4;" +
-                "-fx-border-color: #cccccc;" +
-                "-fx-border-width: 0 0 1 0;" +
-                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 2);"
+        // --- Layout : sections organisées et étiquetées dans la barre ---
+        HBox formes = group(btnRectangle, btnCircle, btnLine);
+        HBox dimension = group(rb2D, rb3D,
+                new Separator(Orientation.VERTICAL),
+                lblResize, comboResize, cbFixedSize);
+        HBox apparence = group(lblFill, fillColorPicker, cbFill,
+                new Separator(Orientation.VERTICAL),
+                lblBorder, cbBorder, borderColorPicker);
+        HBox edition = group(btnUndo, btnRedo, btnEraser);
+        HBox graphe = group(btnPath, lblAlgo, comboAlgo);
+        HBox fichier = group(btnSave, btnOpen);
+        HBox journal = group(lblLogger, comboLogger);
+
+        FlowPane bar = new FlowPane(12, 12,
+                section("Formes", formes),
+                section("Dimension", dimension),
+                section("Apparence", apparence),
+                section("Édition", edition),
+                section("Graphe", graphe),
+                section("Fichier", fichier),
+                section("Journal", journal)
         );
+        bar.setAlignment(Pos.CENTER_LEFT);
+
+        root = new VBox(bar);
+        root.setPadding(new Insets(12));
+        root.setStyle(
+                "-fx-background-color: linear-gradient(to bottom, #F7F8FA, #ECEFF1);" +
+                "-fx-border-color: #D7DBE0;" +
+                "-fx-border-width: 0 0 1 0;" +
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 10, 0, 0, 3);"
+        );
+    }
+
+    // --- Helpers de présentation (purement visuels) ---
+
+    private static final String BTN_BASE =
+            "-fx-background-radius: 7; -fx-border-radius: 7; -fx-cursor: hand;" +
+            "-fx-padding: 6 14 6 14; -fx-font-size: 12px;";
+
+    private static String btnStyle(boolean primary, boolean hover) {
+        if (primary) {
+            return BTN_BASE + "-fx-text-fill: white; -fx-font-weight: bold;"
+                    + "-fx-background-color: " + (hover ? "#1D4ED8" : "#2563EB") + ";";
+        }
+        return BTN_BASE + "-fx-text-fill: #1F2937; -fx-border-width: 1;"
+                + "-fx-background-color: " + (hover ? "#F3F4F6" : "white") + ";"
+                + "-fx-border-color: " + (hover ? "#9CA3AF" : "#D0D5DD") + ";";
+    }
+
+    /** Applique un style cohérent + survol. N'altère pas l'action du bouton. */
+    private static void styleButton(Button b, boolean primary) {
+        b.setStyle(btnStyle(primary, false));
+        b.setOnMouseEntered(e -> b.setStyle(btnStyle(primary, true)));
+        b.setOnMouseExited(e -> b.setStyle(btnStyle(primary, false)));
+    }
+
+    /** Regroupe des contrôles horizontalement, alignés et espacés. */
+    private static HBox group(Node... items) {
+        HBox h = new HBox(8, items);
+        h.setAlignment(Pos.CENTER_LEFT);
+        return h;
+    }
+
+    /** Encadre un groupe dans une « carte » titrée. */
+    private static VBox section(String title, Node content) {
+        Label cap = new Label(title.toUpperCase());
+        cap.setStyle("-fx-font-size: 10px; -fx-font-weight: bold;"
+                + "-fx-text-fill: #6B7280;");
+        VBox box = new VBox(6, cap, content);
+        box.setPadding(new Insets(8, 12, 8, 12));
+        box.setStyle(
+                "-fx-background-color: white;" +
+                "-fx-background-radius: 10;" +
+                "-fx-border-color: #E5E7EB;" +
+                "-fx-border-radius: 10;" +
+                "-fx-border-width: 1;"
+        );
+        return box;
     }
 
     private void updateFactory() {
