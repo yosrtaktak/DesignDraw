@@ -38,8 +38,8 @@ un patron de conception précis :
 |---|---|
 | Créer des formes (rectangle / cercle / ligne, 2D & 3D) | **Factory Method** |
 | Redessiner le canevas quand une forme change d'état (resize) | **Observer** |
-| Annuler / refaire (ajout, gomme, redimensionnement) | **Command** |
-| Couleur de remplissage / de bordure | **Decorator** |
+| Annuler / refaire (ajout, gomme, redimensionnement, recolorisation) | **Command** |
+| Couleur de remplissage / de bordure (et bordure retirable) | **Decorator** |
 | Journalisation console / fichier / base | **Strategy** + **Singleton** |
 | Choisir l'algorithme du plus court chemin | **Strategy** |
 | Enregistrer / ouvrir des dessins nommés | **DAO / Repository** + **Singleton** |
@@ -75,7 +75,8 @@ DesignDraw/
 │           │   ├── CommandManager.java      ← invoker (piles undo/redo)
 │           │   ├── AddShapeCommand.java
 │           │   ├── EraseShapeCommand.java
-│           │   └── ResizeShapeCommand.java
+│           │   ├── ResizeShapeCommand.java
+│           │   └── ChangeColorCommand.java  ← recolorisation / bordure on-off
 │           ├── decorator/                   ← Decorator
 │           │   ├── ShapeDecorator.java      ← décorateur abstrait
 │           │   ├── FillColorDecorator.java
@@ -245,24 +246,28 @@ classDiagram
 ### 3.3 Command (Commande) + Undo/Redo
 
 **Ce qu'il fait** — Encapsule chaque action utilisateur (dessiner, gommer,
-redimensionner) dans un objet `ICommand` possédant `execute()` et `undo()`. Le
-`CommandManager` empile les commandes exécutées (pile *undo*) et les commandes
-annulées (pile *redo*).
+redimensionner, recolorier) dans un objet `ICommand` possédant `execute()` et
+`undo()`. Le `CommandManager` empile les commandes exécutées (pile *undo*) et
+les commandes annulées (pile *redo*).
 
 **Pourquoi ici** — C'est le patron canonique pour un Undo/Redo robuste : chaque
 commande sait défaire son propre effet et capture l'état nécessaire à
-l'annulation (ex. `ResizeShapeCommand` mémorise l'extrémité précédente).
+l'annulation (ex. `ResizeShapeCommand` mémorise l'extrémité précédente ;
+`ChangeColorCommand` mémorise l'ancien empilement de décorateurs).
 
 **Receivers** — `AddShapeCommand` et `EraseShapeCommand` ont pour Receiver
 le `DrawingCanvas` (ils ajoutent/retirent la forme du modèle). En revanche
 `ResizeShapeCommand` a pour Receiver la **forme elle-même** : il modifie sa
 géométrie ; le canevas se redessine ensuite via Observer (cf. §3.2). La
 commande de redimensionnement ne dépend donc plus du canevas — couplage
-strictement minimal.
+strictement minimal. `ChangeColorCommand` a pour Receiver le `DrawingCanvas`
+(via `replaceShape(old, new)`), mais ne mute pas l'ancienne chaîne de
+Decorators : il en **substitue** une nouvelle (construite par
+`ToolPalette.recolor` autour de la même forme brute). Voir §3.4 et §D12.
 
 **Classes** — `ICommand`, `CommandManager` (Invoker), `AddShapeCommand`,
-`EraseShapeCommand`, `ResizeShapeCommand` ; *Receivers* : `DrawingCanvas`
-(add / erase) et `IShape` (resize).
+`EraseShapeCommand`, `ResizeShapeCommand`, `ChangeColorCommand` ;
+*Receivers* : `DrawingCanvas` (add / erase / replace) et `IShape` (resize).
 
 ```mermaid
 classDiagram
@@ -281,6 +286,7 @@ classDiagram
     class AddShapeCommand
     class EraseShapeCommand
     class ResizeShapeCommand
+    class ChangeColorCommand
     class DrawingCanvas
     class IShape {
         <<interface>>
@@ -289,10 +295,12 @@ classDiagram
     ICommand <|.. AddShapeCommand
     ICommand <|.. EraseShapeCommand
     ICommand <|.. ResizeShapeCommand
+    ICommand <|.. ChangeColorCommand
     CommandManager o--> ICommand : piles undo/redo
     AddShapeCommand ..> DrawingCanvas : Receiver
     EraseShapeCommand ..> DrawingCanvas : Receiver
     ResizeShapeCommand ..> IShape : Receiver (resize)
+    ChangeColorCommand ..> DrawingCanvas : Receiver (replaceShape)
 ```
 
 ---
@@ -329,6 +337,17 @@ du remplissage, mais le code resterait correct si on inversait.
 (c'est le but : décocher *Bordure* + *Remplir* rend la forme invisible).
 Les lignes n'ont pas d'intérieur ; `ToolPalette` les enveloppe toujours
 d'un `BorderColorDecorator` dont la couleur vient du sélecteur principal.
+
+**Recoloration d'une forme existante (cf. §3.3 et §D12)** — `ToolPalette.recolor(IShape)`
+déballe la chaîne (`while (cur instanceof ShapeDecorator) cur = cur.getWrapped()`)
+pour retrouver la forme brute, puis en **construit une nouvelle chaîne** selon
+l'état courant de la palette (`cbFill`, `cbBorder`, les deux `ColorPicker`s).
+Décocher *Bordure* produit littéralement une chaîne sans
+`BorderColorDecorator` — le contour disparaît. `ChangeColorCommand`
+substitue cette nouvelle chaîne à l'ancienne dans le canevas via
+`DrawingCanvas.replaceShape`. Reconstruire (plutôt que muter) la chaîne
+permet **à la fois** de changer une couleur **et** de retirer/remettre la
+bordure, et préserve l'immutabilité des Decorators.
 
 ```mermaid
 classDiagram
@@ -658,6 +677,32 @@ Le fichier `dp/DS/observer/Shape.java` ne contenait que
 `public interface Shape { }` — vestige d'un refactor antérieur, jamais
 importé ni implémenté ailleurs. Supprimé.
 
+### D12 — Recolorisation = Command (substitution de chaîne), pas mutation de Decorator
+*Besoin* : changer la couleur de remplissage / la couleur de bordure d'une
+forme déjà dessinée, **et** pouvoir retirer la bordure (ou la remettre).
+*Options examinées* :
+- **Muter** le champ `fillColor` / `borderColor` du Decorator existant —
+  cassant : les Decorators sont volontairement immuables (champs `final`),
+  et surtout cela ne traite pas le cas « retirer la bordure » (changement
+  *structurel* de la chaîne, pas seulement de valeur).
+- **Memento** — capturerait l'état pour l'undo, mais les couleurs ne sont
+  pas un état privé : elles **sont** la chaîne de Decorators publique. Un
+  Memento dupliquerait inutilement ce que la chaîne porte déjà.
+- **Command** (retenu) — chaque recoloration est une action discrète,
+  réversible, qui s'inscrit naturellement dans les piles undo/redo du
+  `CommandManager` aux côtés de `Add`/`Erase`/`Resize`.
+
+*Décision* : nouveau `ChangeColorCommand` ; nouvelle méthode
+`DrawingCanvas.replaceShape(old, new)` (préserve la position dans la liste
+— donc le z-order — et transfère l'observateur) ; nouvelle méthode
+`ToolPalette.recolor(IShape)` qui déballe la chaîne pour récupérer la forme
+brute et en construit une nouvelle selon l'état courant de la palette
+(mêmes règles que `createShape`). Nouveau bouton « Recolorer » dans la
+section *Édition* + flag `recolorMode` (même style que `eraserMode` /
+`resizeMode` / `pathMode`). La même forme brute est partagée entre l'ancienne
+et la nouvelle chaîne, donc l'identité logique de la forme et ses
+observateurs sont préservés.
+
 ---
 
 ## 5. Conception UML — diagramme de classes
@@ -774,6 +819,28 @@ sequenceDiagram
     Note over Cmd,C: La commande ne connaît pas le canvas :<br/>la vue se met à jour via Observer.
 ```
 
+### 6.1ter Recolorer une forme existante (Command + Decorator)
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant H as HelloFX
+    participant P as ToolPalette
+    participant M as CommandManager
+    participant Cmd as ChangeColorCommand
+    participant C as DrawingCanvas
+
+    U->>P: clic « Recolorer » (active recolorMode)
+    U->>H: clic sur une forme existante
+    H->>P: recolor(forme cliquée)
+    Note over P: déballe la chaîne (getWrapped*)<br/>jusqu'à la forme brute, puis<br/>ré-empile Fill / Border selon cbFill / cbBorder
+    P-->>H: IShape recolorée (nouvelle chaîne)
+    H->>M: executeCommand(new ChangeColorCommand(old, new))
+    M->>Cmd: execute()
+    Cmd->>C: replaceShape(old, new)
+    Note over C: même index dans la liste<br/>(z-order preserve) + transfert<br/>observer + redraw()
+```
+
 ### 6.2 Changer la stratégie de journalisation (Strategy + Singleton)
 
 ```mermaid
@@ -829,9 +896,9 @@ collaboration Factory + Decorator + Singleton.
 | Patron | Avant audit | Après audit |
 |---|---|---|
 | Factory Method | ✅ | ✅ |
-| Command | ✅ | ✅ (Resize découplé du canvas, voir D7) |
+| Command | ✅ | ✅ (Resize découplé du canvas, voir D7 ; + `ChangeColorCommand`, D12) |
 | Observer | ⚠ formes câblées mais ne notifiaient jamais ; ToolPalette à tort *Subject* | ✅ D7 + D8 |
-| Decorator | ⚠ `FillColorDecorator` n'appelait pas `wrapped.draw()` → ordre fragile | ✅ D9 |
+| Decorator | ⚠ `FillColorDecorator` n'appelait pas `wrapped.draw()` → ordre fragile | ✅ D9 (+ recolor par substitution de chaîne, D12) |
 | Strategy | ✅ | ✅ |
 | Singleton | ⚠ init paresseuse non thread-safe | ✅ holder idiom (D10) |
 | Code mort | ⚠ interface `Shape` vide | ✅ supprimée (D11) |

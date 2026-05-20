@@ -170,6 +170,7 @@ classDiagram
         -highlightPath : List~double[]~
         +addShape(IShape)
         +removeShape(IShape)
+        +replaceShape(old, new) "swap, preserve z-order"
         +clearShapes()
         +findShapeAt(x, y) IShape
         +getLastShape() IShape
@@ -187,13 +188,15 @@ classDiagram
         -cbFill, cbBorder, cbFixedSize : CheckBox
         -comboResize, comboLogger : ComboBox
         -selectedShapeType : String
-        -is3D, eraserMode, resizeMode, pathMode : boolean
+        -is3D, eraserMode, resizeMode, pathMode, recolorMode : boolean
         +ToolPalette(...callbacks)
         +createShape(sx, sy, ex, ey) IShape
+        +recolor(IShape) IShape
         +getSelectedSize() int
         +isEraserMode() boolean
         +isResizeMode() boolean
         +isPathMode() boolean
+        +isRecolorMode() boolean
         +setSelectedLogger(String)
         +getView() VBox
     }
@@ -363,12 +366,22 @@ classDiagram
         +undo() "shape.resize"
     }
 
+    class ChangeColorCommand {
+        -canvas : DrawingCanvas
+        -oldShape : IShape
+        -newShape : IShape
+        +ChangeColorCommand(canvas, old, new)
+        +execute() "canvas.replaceShape(old,new)"
+        +undo() "canvas.replaceShape(new,old)"
+    }
+
     class DrawingCanvas
     class IShape { <<interface>> }
 
     ICommand <|.. AddShapeCommand
     ICommand <|.. EraseShapeCommand
     ICommand <|.. ResizeShapeCommand
+    ICommand <|.. ChangeColorCommand
     CommandManager o--> ICommand : piles undo/redo
 
     AddShapeCommand ..> DrawingCanvas : Receiver
@@ -376,11 +389,18 @@ classDiagram
     AddShapeCommand ..> IShape
     EraseShapeCommand ..> IShape
     ResizeShapeCommand ..> IShape : Receiver
+    ChangeColorCommand ..> DrawingCanvas : Receiver
+    ChangeColorCommand ..> IShape : old + new
 ```
 
 > `ResizeShapeCommand` ne référence pas `DrawingCanvas` : il mute la forme,
 > et la chaîne Observer fait redessiner le canevas (cf. **D7** dans
 > `DOCUMENTATION.md`).
+>
+> `ChangeColorCommand` ne mute pas l'ancienne chaîne de Decorators : il en
+> substitue une nouvelle (construite par `ToolPalette.recolor`) autour de
+> la même forme brute. `DrawingCanvas.replaceShape` préserve la position
+> dans la liste (donc le z-order) et transfère l'observateur. Voir **D12**.
 
 ---
 
@@ -626,9 +646,9 @@ graph LR
 | Observer | Subject | `IObservable`, implémenté par toutes les formes (`RectangleShape`, …) |
 | Observer | Observer | `IObserver`, implémenté par `DrawingCanvas` |
 | Command | Command | `ICommand` |
-| Command | ConcreteCommand | `AddShapeCommand`, `EraseShapeCommand`, `ResizeShapeCommand` |
+| Command | ConcreteCommand | `AddShapeCommand`, `EraseShapeCommand`, `ResizeShapeCommand`, `ChangeColorCommand` |
 | Command | Invoker | `CommandManager` |
-| Command | Receiver | `DrawingCanvas` (add/erase) ; `IShape` (resize) |
+| Command | Receiver | `DrawingCanvas` (add/erase/replace) ; `IShape` (resize) |
 | Decorator | Component | `IShape` |
 | Decorator | ConcreteComponent | `RectangleShape`, `CircleShape`, `LineShape` + `*3D` |
 | Decorator | Decorator | `ShapeDecorator` (abstrait) |

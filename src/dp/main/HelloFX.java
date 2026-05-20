@@ -1,6 +1,7 @@
 package dp.main;
 
 import dp.DS.command.AddShapeCommand;
+import dp.DS.command.ChangeColorCommand;
 import dp.DS.command.CommandManager;
 import dp.DS.command.EraseShapeCommand;
 import dp.DS.command.ICommand;
@@ -96,6 +97,11 @@ public class HelloFX extends Application {
                 () -> logger.log("Mode Gomme active"),
                 // onResize
                 () -> logger.log("Mode Redimensionner active"),
+                // onRecolor — entre en mode "changer la couleur d'une forme existante"
+                () -> {
+                    statusBar.setText("Mode Recolorer : cliquez une forme — applique Couleur / Bordure de la palette");
+                    logger.log("Mode Recolorer active");
+                },
                 // onLoggerChange
                 selected -> {
                     switch (selected) {
@@ -305,6 +311,20 @@ public class HelloFX extends Application {
                     cmdManager.executeCommand(cmd);
                     statusBar.setText("Forme effacée — " + target.shapeKind());
                     logger.log("Gomme: forme effacee - " + target.toString());
+                }
+            } else if (palette.isRecolorMode()) {
+                // --- RECOLORER : reconstruit la chaine de Decorators d'une forme
+                // existante avec les couleurs / l'etat de bordure courants. ---
+                IShape target = drawingCanvas.findShapeAt(endX, endY);
+                if (target == null) target = drawingCanvas.findShapeAt(startX, startY);
+                if (target != null) {
+                    IShape recolored = palette.recolor(target);
+                    if (recolored != null) {
+                        ICommand cmd = new ChangeColorCommand(drawingCanvas, target, recolored);
+                        cmdManager.executeCommand(cmd);
+                        statusBar.setText("Couleur changée — " + target.shapeKind());
+                        logger.log("Recolor: " + target + " -> " + recolored);
+                    }
                 }
             } else {
                 // --- DESSIN : AddShapeCommand ---

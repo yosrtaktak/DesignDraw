@@ -11,6 +11,7 @@ import dp.DS.Factory.LineFactory3D;
 import dp.DS.Factory.ShapeFactory;
 import dp.DS.decorator.BorderColorDecorator;
 import dp.DS.decorator.FillColorDecorator;
+import dp.DS.decorator.ShapeDecorator;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -59,6 +60,7 @@ public class ToolPalette extends Pane {
     private boolean eraserMode = false;
     private boolean resizeMode = false;
     private boolean pathMode = false;
+    private boolean recolorMode = false;
 
     public ToolPalette(
             Runnable onRectangle,
@@ -68,6 +70,7 @@ public class ToolPalette extends Pane {
             Runnable onRedo,
             Runnable onEraser,
             Runnable onResize,
+            Runnable onRecolor,
             Consumer<String> onLoggerChange,
             Runnable onPath,
             Consumer<String> onAlgoChange,
@@ -80,11 +83,12 @@ public class ToolPalette extends Pane {
         Button btnLine      = new Button("Ligne");
 
         // --- Boutons commande ---
-        Button btnUndo   = new Button("Undo");
-        Button btnRedo   = new Button("Redo");
-        Button btnEraser = new Button("Gomme");
-        Button btnSave   = new Button("Enregistrer");
-        Button btnOpen   = new Button("Ouvrir");
+        Button btnUndo    = new Button("Undo");
+        Button btnRedo    = new Button("Redo");
+        Button btnEraser  = new Button("Gomme");
+        Button btnRecolor = new Button("Recolorer");
+        Button btnSave    = new Button("Enregistrer");
+        Button btnOpen    = new Button("Ouvrir");
 
         // --- Etude de cas : plus court chemin dans un graphe ---
         Button btnPath = new Button("Plus court chemin");
@@ -135,6 +139,7 @@ public class ToolPalette extends Pane {
             eraserMode = false;
             resizeMode = false;
             pathMode = false;
+            recolorMode = false;
             onRectangle.run();
             selectedShapeType = "RECTANGLE";
             sf = is3D ? new RectangleFactory3D() : new RectangleFactory();
@@ -143,6 +148,7 @@ public class ToolPalette extends Pane {
             eraserMode = false;
             resizeMode = false;
             pathMode = false;
+            recolorMode = false;
             onCircle.run();
             selectedShapeType = "CIRCLE";
             sf = is3D ? new CircleFactory3D() : new CircleFactory();
@@ -151,6 +157,7 @@ public class ToolPalette extends Pane {
             eraserMode = false;
             resizeMode = false;
             pathMode = false;
+            recolorMode = false;
             onLine.run();
             selectedShapeType = "LINE";
             sf = is3D ? new LineFactory3D() : new LineFactory();
@@ -165,18 +172,28 @@ public class ToolPalette extends Pane {
             eraserMode = true;
             resizeMode = false;
             pathMode = false;
+            recolorMode = false;
             onEraser.run();
         });
         comboResize.setOnAction(e -> {
             resizeMode = true;
             eraserMode = false;
             pathMode = false;
+            recolorMode = false;
             onResize.run();
+        });
+        btnRecolor.setOnAction(e -> {
+            recolorMode = true;
+            eraserMode = false;
+            resizeMode = false;
+            pathMode = false;
+            onRecolor.run();
         });
         btnPath.setOnAction(e -> {
             pathMode = true;
             eraserMode = false;
             resizeMode = false;
+            recolorMode = false;
             onPath.run();
         });
         comboAlgo.setOnAction(e -> onAlgoChange.accept(comboAlgo.getValue()));
@@ -194,6 +211,7 @@ public class ToolPalette extends Pane {
         styleButton(btnUndo, false);
         styleButton(btnRedo, false);
         styleButton(btnEraser, false);
+        styleButton(btnRecolor, false);
         styleButton(btnPath, true);
         styleButton(btnSave, true);
         styleButton(btnOpen, true);
@@ -209,7 +227,7 @@ public class ToolPalette extends Pane {
                 section("Apparence", group(lblFill, fillColorPicker, cbFill,
                         new Separator(Orientation.VERTICAL),
                         lblBorder, cbBorder, borderColorPicker)), sep(),
-                section("Édition", group(btnUndo, btnRedo, btnEraser)), sep(),
+                section("Édition", group(btnUndo, btnRedo, btnEraser, btnRecolor)), sep(),
                 section("Graphe", group(btnPath, lblAlgo, comboAlgo)), sep(),
                 section("Fichier", group(btnSave, btnOpen)), sep(),
                 section("Journal", group(lblLogger, comboLogger))
@@ -331,6 +349,37 @@ public class ToolPalette extends Pane {
     public boolean isResizeMode() { return resizeMode; }
 
     public boolean isPathMode() { return pathMode; }
+
+    public boolean isRecolorMode() { return recolorMode; }
+
+    /**
+     * Reconstruit la chaine de Decorators autour de la meme forme brute en
+     * appliquant l'etat courant de la palette (couleur de remplissage,
+     * couleur de bordure, cases "Remplir" / "Bordure"). Permet a la fois
+     * de changer une couleur, de retirer la bordure (cbBorder decoche)
+     * ou de la remettre. Pour une ligne, on ne pose qu'un
+     * BorderColorDecorator avec le selecteur "Couleur", comme a la creation.
+     */
+    public IShape recolor(IShape original) {
+        if (original == null) return null;
+        IShape raw = original;
+        while (raw instanceof ShapeDecorator) {
+            raw = ((ShapeDecorator) raw).getWrapped();
+        }
+        boolean isLine = "LINE".equals(raw.shapeKind());
+        IShape result = raw;
+        if (isLine) {
+            result = new BorderColorDecorator(result, fillColorPicker.getValue());
+        } else {
+            if (cbFill.isSelected()) {
+                result = new FillColorDecorator(result, fillColorPicker.getValue());
+            }
+            if (cbBorder.isSelected()) {
+                result = new BorderColorDecorator(result, borderColorPicker.getValue());
+            }
+        }
+        return result;
+    }
 
     /** Taille absolue choisie dans le selecteur (defaut 50). */
     public int getSelectedSize() {

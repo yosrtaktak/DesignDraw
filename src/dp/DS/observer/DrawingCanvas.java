@@ -78,6 +78,23 @@ public class DrawingCanvas implements IObserver {
     }
 
     /**
+     * Remplace une forme par une autre a la meme position de la liste
+     * (preserve le z-order) et transfere l'observateur. Utilise par la
+     * commande de changement de couleur : la "nouvelle" forme est un nouvel
+     * empilement de Decorators autour de la meme forme brute, donc on
+     * conserve l'identite logique tout en redessinant avec les nouvelles
+     * couleurs / l'etat de la bordure.
+     */
+    public void replaceShape(IShape oldShape, IShape newShape) {
+        int idx = shapes.indexOf(oldShape);
+        if (idx < 0) return;
+        oldShape.removeObserver(this);
+        shapes.set(idx, newShape);
+        newShape.addObserver(this);
+        redraw();
+    }
+
+    /**
      * Retourne la dernière forme ajoutée (pour la gomme).
      */
     public IShape getLastShape() {
