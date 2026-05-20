@@ -5,8 +5,14 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 
 /**
- * Decorator concret — remplit la forme avec une couleur, puis
- * delegue au shape encapsule pour tracer le contour.
+ * Decorator concret — ajoute un remplissage coloré par-dessus ce que
+ * dessine déjà la chaîne encapsulée.
+ *
+ * Conforme au contrat Decorator : on appelle d'abord wrapped.draw(gc)
+ * (les couches en-dessous se peignent), puis on ajoute notre contribution.
+ * Le résultat est composable dans n'importe quel ordre — seul le z-order
+ * (qui est devant) dépend de l'empilement, ce qui est exactement le rôle
+ * du pattern.
  */
 public class FillColorDecorator extends ShapeDecorator {
 
@@ -21,8 +27,7 @@ public class FillColorDecorator extends ShapeDecorator {
 
     @Override
     public void draw(GraphicsContext gc) {
-        // Remplissage seul — le contour est la responsabilité de
-        // BorderColorDecorator (et n'est ajouté que s'il est présent).
+        wrapped.draw(gc);
         gc.save();
         gc.setFill(fillColor);
         wrapped.fillShape(gc);

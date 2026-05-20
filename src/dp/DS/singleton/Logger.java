@@ -14,9 +14,6 @@ import dp.DS.strategy.LogConsole;
  */
 public class Logger {
 
-    // Instance unique (Singleton)
-    private static Logger instance;
-
     // Stratégie de logging courante (Strategy Pattern)
     private ILogger strategy;
 
@@ -29,16 +26,22 @@ public class Logger {
     }
 
     /**
-     * Retourne l'instance unique du Logger.
-     * Crée l'instance au premier appel (lazy initialization).
-     * 
+     * Holder idiom : la classe interne n'est chargée qu'au premier appel à
+     * getInstance(). Le JVM garantit qu'une classe n'est initialisée qu'une
+     * seule fois et de manière thread-safe — donc INSTANCE est lazy ET unique
+     * sans synchronized ni volatile.
+     */
+    private static class Holder {
+        private static final Logger INSTANCE = new Logger();
+    }
+
+    /**
+     * Retourne l'instance unique du Logger (lazy, thread-safe).
+     *
      * @return l'instance unique du Logger
      */
     public static Logger getInstance() {
-        if (instance == null) {
-            instance = new Logger();
-        }
-        return instance;
+        return Holder.INSTANCE;
     }
 
     /**

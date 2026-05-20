@@ -1,21 +1,21 @@
 package dp.DS.command;
 
-import dp.DS.observer.DrawingCanvas;
 import dp.DS.observer.IShape;
 
 /**
  * Command — redimensionne une forme a une taille absolue choisie dans la
  * palette. Capture l'extremite courante a la construction pour pouvoir annuler.
+ *
+ * Pas besoin de référence au canvas : la forme notifie ses observateurs
+ * (Observer pattern) et le canvas se redessine tout seul.
  */
 public class ResizeShapeCommand implements ICommand {
 
-    private final DrawingCanvas canvas;
     private final IShape shape;
     private final double newSize;
     private final double oldEndX, oldEndY;
 
-    public ResizeShapeCommand(DrawingCanvas canvas, IShape shape, double newSize) {
-        this.canvas = canvas;
+    public ResizeShapeCommand(IShape shape, double newSize) {
         this.shape = shape;
         this.newSize = newSize;
         this.oldEndX = shape.getEndX();
@@ -24,13 +24,12 @@ public class ResizeShapeCommand implements ICommand {
 
     @Override
     public void execute() {
+        // Le redraw est déclenché par l'Observer (shape -> canvas) via notifyObservers().
         shape.resizeTo(newSize);
-        canvas.redraw();
     }
 
     @Override
     public void undo() {
         shape.resize(oldEndX, oldEndY);
-        canvas.redraw();
     }
 }

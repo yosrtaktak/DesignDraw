@@ -1,7 +1,5 @@
 package dp.DS.observer;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Consumer;
 
 import dp.DS.Factory.RectangleFactory;
@@ -35,16 +33,18 @@ import javafx.scene.paint.Color;
 /**
  * Palette d'outils — conforme à la conception :
  * - Factory Method : ShapeFactory sf
- * - Observer : IObservable
  * - Command : Undo / Redo / Gomme / Redimensionner via callbacks
  * - Decorator : FillColor / BorderColor appliques dans createShape
  * - Strategy : choix de l'algorithme de plus court chemin (Dijkstra/...)
+ *
+ * Note: la palette n'est PAS Observable. L'Observer du projet relie le modèle
+ * (IShape) à la vue (DrawingCanvas) ; la palette est un contrôleur qui émet
+ * ses actions via les callbacks Runnable fournis par HelloFX.
  */
-public class ToolPalette extends Pane implements IObservable {
+public class ToolPalette extends Pane {
 
     private final VBox root;
     private final ComboBox<String> comboLogger;
-    private final List<IObserver> observers = new ArrayList<>();
 
     private final ColorPicker fillColorPicker;
     private final CheckBox cbBorder;
@@ -138,7 +138,6 @@ public class ToolPalette extends Pane implements IObservable {
             onRectangle.run();
             selectedShapeType = "RECTANGLE";
             sf = is3D ? new RectangleFactory3D() : new RectangleFactory();
-            notifyObservers();
         });
         btnCircle.setOnAction(e -> {
             eraserMode = false;
@@ -147,7 +146,6 @@ public class ToolPalette extends Pane implements IObservable {
             onCircle.run();
             selectedShapeType = "CIRCLE";
             sf = is3D ? new CircleFactory3D() : new CircleFactory();
-            notifyObservers();
         });
         btnLine.setOnAction(e -> {
             eraserMode = false;
@@ -156,7 +154,6 @@ public class ToolPalette extends Pane implements IObservable {
             onLine.run();
             selectedShapeType = "LINE";
             sf = is3D ? new LineFactory3D() : new LineFactory();
-            notifyObservers();
         });
 
         // --- Actions commande (Command pattern) ---
@@ -345,14 +342,5 @@ public class ToolPalette extends Pane implements IObservable {
 
     public void setSelectedLogger(String loggerName) {
         comboLogger.setValue(loggerName);
-    }
-
-    @Override
-    public void addObserver(IObserver observer) { observers.add(observer); }
-    @Override
-    public void removeObserver(IObserver observer) { observers.remove(observer); }
-    @Override
-    public void notifyObservers() {
-        for (IObserver observer : observers) { observer.update(); }
     }
 }

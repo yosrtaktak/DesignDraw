@@ -53,6 +53,7 @@ public class CircleShape implements IShape {
     public void resize(double endX, double endY) {
         this.width = Math.max(1, endX - x);
         this.height = Math.max(1, endY - y);
+        notifyObservers();
     }
 
     @Override
@@ -60,6 +61,7 @@ public class CircleShape implements IShape {
         double s = Math.max(1, size);
         this.width = s;
         this.height = s;
+        notifyObservers();
     }
 
     @Override

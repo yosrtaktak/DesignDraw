@@ -79,6 +79,7 @@ public class LineShape3D implements IShape {
     public void resize(double newEndX, double newEndY) {
         this.endX = newEndX;
         this.endY = newEndY;
+        notifyObservers();
     }
 
     @Override
@@ -94,6 +95,7 @@ public class LineShape3D implements IShape {
             this.endX = startX + dx / len * s;
             this.endY = startY + dy / len * s;
         }
+        notifyObservers();
     }
 
     @Override

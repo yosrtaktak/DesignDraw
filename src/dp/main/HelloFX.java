@@ -217,9 +217,6 @@ public class HelloFX extends Application {
         );
         palette.setSelectedLogger("LogConsole");
 
-        // Observer : palette → canvas
-        palette.addObserver(drawingCanvas);
-
         // --- Mouse events sur le canvas ---
         drawingCanvas.getCanvas().setOnMousePressed(e -> {
             startX = e.getX();
@@ -293,7 +290,7 @@ public class HelloFX extends Application {
             if (palette.isResizeMode()) {
                 if (resizeTarget != null) {
                     int size = palette.getSelectedSize();
-                    ICommand cmd = new ResizeShapeCommand(drawingCanvas, resizeTarget, size);
+                    ICommand cmd = new ResizeShapeCommand(resizeTarget, size);
                     cmdManager.executeCommand(cmd);
                     statusBar.setText("Forme redimensionnée à la taille " + size);
                     logger.log("Redimensionnement -> taille " + size + " : " + resizeTarget.toString());

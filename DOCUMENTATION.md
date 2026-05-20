@@ -37,7 +37,7 @@ un patron de conception précis :
 | Besoin fonctionnel | Patron démontré |
 |---|---|
 | Créer des formes (rectangle / cercle / ligne, 2D & 3D) | **Factory Method** |
-| Redessiner le canevas quand l'outil change | **Observer** |
+| Redessiner le canevas quand une forme change d'état (resize) | **Observer** |
 | Annuler / refaire (ajout, gomme, redimensionnement) | **Command** |
 | Couleur de remplissage / de bordure | **Decorator** |
 | Journalisation console / fichier / base | **Strategy** + **Singleton** |
@@ -69,7 +69,7 @@ DesignDraw/
 │           │   ├── CircleShape.java    / CircleShape3D.java
 │           │   ├── LineShape.java      / LineShape3D.java
 │           │   ├── DrawingCanvas.java       ← Observer concret
-│           │   └── ToolPalette.java         ← barre d'outils (Observable)
+│           │   └── ToolPalette.java         ← barre d'outils (contrôleur, callbacks)
 │           ├── command/                     ← Command
 │           │   ├── ICommand.java
 │           │   ├── CommandManager.java      ← invoker (piles undo/redo)
@@ -161,18 +161,49 @@ classDiagram
 
 ### 3.2 Observer (Observateur)
 
-**Ce qu'il fait** — Découple l'émetteur d'un changement de ses réactions. Quand
-l'utilisateur sélectionne un outil dans la `ToolPalette`, celle-ci notifie ses
-observateurs ; le `DrawingCanvas` se redessine sans que la palette ne le connaisse
-directement.
+**Ce qu'il fait** — Découple un objet qui change d'état (le **modèle**) des
+vues qui doivent réagir. Une forme qui se redimensionne notifie ses
+observateurs ; le `DrawingCanvas` se redessine sans que la forme ait à
+le connaître.
 
-**Pourquoi ici** — La palette et le canevas évoluent indépendamment ; l'Observer
-évite un couplage fort palette→canevas et permet d'ajouter d'autres observateurs
-(p. ex. une barre de statut) sans modifier la palette.
+**Pourquoi ici** — Le rôle de chaque acteur de l'application correspond
+exactement aux rôles GoF :
 
-**Classes** — `IObservable` (Subject), `IObserver` (Observer), `ToolPalette`
-et toutes les formes `IShape` sont *observables* ; `DrawingCanvas` est
-l'*observateur* concret (`update()` → `redraw()`).
+| Rôle MVC | Classe | Rôle Observer |
+|---|---|---|
+| Modèle (état) | `IShape` et ses concrètes | **Subject** (Observable) |
+| Vue (rendu) | `DrawingCanvas` | **Observer** (passif, redessine) |
+| Contrôleur (entrées) | `ToolPalette`, `HelloFX` | ni l'un ni l'autre — émet des callbacks |
+
+L'Observer évite un couplage fort modèle→vue et permet d'ajouter d'autres
+observateurs (p. ex. un mini-aperçu, un panneau de propriétés) sans
+modifier les formes.
+
+**Mécanique concrète** — Chaque mutateur de forme (`resize`, `resizeTo`)
+appelle `notifyObservers()` après avoir modifié sa géométrie. Le canevas
+s'abonne lorsqu'une forme est ajoutée (`canvas.addShape(s)` → `s.addObserver(this)`)
+et se désabonne à la suppression. Sa méthode `update()` se contente d'appeler
+`redraw()`.
+
+**Note importante — `ToolPalette` n'est PAS Observable.** La palette est un
+contrôleur : cliquer un bouton n'altère aucun pixel du canevas, donc il n'y a
+rien à « observer » côté palette. Ses événements (« outil Rectangle choisi »,
+« nouvelle stratégie de log ») sont publiés via les `Runnable` / `Consumer`
+passés à son constructeur — c'est plus précis sémantiquement (`onRectangle`,
+`onLoggerChange`) que l'`update()` générique d'Observer. Faire de la palette
+un Subject reviendrait à dupliquer ce canal et provoquerait un `redraw()`
+inutile à chaque clic d'outil.
+
+**Décorateurs et Observer** — `ShapeDecorator` délègue
+`addObserver` / `removeObserver` / `notifyObservers` à `wrapped`. Quand le
+canevas s'abonne à une forme décorée (`shape.addObserver(this)`), l'observateur
+se retrouve enregistré sur la **forme interne** ; quand la forme interne
+notifie, le canevas est appelé. La chaîne fonctionne de bout en bout sans que
+les décorateurs aient à connaître la liste d'observateurs.
+
+**Classes** — `IObservable` (Subject), `IObserver` (Observer), toutes les
+formes `IShape` sont *observables* ; `DrawingCanvas` est l'*observateur*
+concret (`update()` → `redraw()`).
 
 ```mermaid
 classDiagram
@@ -186,21 +217,27 @@ classDiagram
         <<interface>>
         +update()
     }
-    class ToolPalette {
-        +notifyObservers()
-    }
     class IShape {
         <<interface>>
+        +resize(ex, ey)
+        +resizeTo(size)
     }
+    class RectangleShape
+    class CircleShape
+    class LineShape
     class DrawingCanvas {
         +update()
         +redraw()
+        +addShape(IShape)
     }
-    IObservable <|.. ToolPalette
-    IObservable <|.. IShape
+
+    IObservable <|-- IShape
+    IShape <|.. RectangleShape
+    IShape <|.. CircleShape
+    IShape <|.. LineShape
     IObserver  <|.. DrawingCanvas
     IObservable o--> IObserver : observers
-    DrawingCanvas ..> IShape : observe
+    DrawingCanvas ..> IShape : addObserver(this) / observe
 ```
 
 ---
@@ -216,8 +253,16 @@ annulées (pile *redo*).
 commande sait défaire son propre effet et capture l'état nécessaire à
 l'annulation (ex. `ResizeShapeCommand` mémorise l'extrémité précédente).
 
+**Receivers** — `AddShapeCommand` et `EraseShapeCommand` ont pour Receiver
+le `DrawingCanvas` (ils ajoutent/retirent la forme du modèle). En revanche
+`ResizeShapeCommand` a pour Receiver la **forme elle-même** : il modifie sa
+géométrie ; le canevas se redessine ensuite via Observer (cf. §3.2). La
+commande de redimensionnement ne dépend donc plus du canevas — couplage
+strictement minimal.
+
 **Classes** — `ICommand`, `CommandManager` (Invoker), `AddShapeCommand`,
-`EraseShapeCommand`, `ResizeShapeCommand` ; le `DrawingCanvas` est le *Receiver*.
+`EraseShapeCommand`, `ResizeShapeCommand` ; *Receivers* : `DrawingCanvas`
+(add / erase) et `IShape` (resize).
 
 ```mermaid
 classDiagram
@@ -237,14 +282,17 @@ classDiagram
     class EraseShapeCommand
     class ResizeShapeCommand
     class DrawingCanvas
+    class IShape {
+        <<interface>>
+    }
 
     ICommand <|.. AddShapeCommand
     ICommand <|.. EraseShapeCommand
     ICommand <|.. ResizeShapeCommand
     CommandManager o--> ICommand : piles undo/redo
     AddShapeCommand ..> DrawingCanvas : Receiver
-    EraseShapeCommand ..> DrawingCanvas
-    ResizeShapeCommand ..> DrawingCanvas
+    EraseShapeCommand ..> DrawingCanvas : Receiver
+    ResizeShapeCommand ..> IShape : Receiver (resize)
 ```
 
 ---
@@ -260,10 +308,27 @@ forme sans modifier sa classe : remplissage (`FillColorDecorator`) et contour
 nombreuses ; une hiérarchie d'héritage exploserait. Le Decorator compose les
 effets à l'exécution selon les cases cochées dans la palette.
 
-**Contrat de rendu (refactorisé — voir §4)** : `IShape.draw()` ne dessine
-**rien** par défaut. Chaque forme implémente `fillShape()` (intérieur) et
-`strokeShape()` (contour). `FillColorDecorator.draw()` = remplissage seul ;
-`BorderColorDecorator.draw()` = contenu encapsulé **puis** contour.
+**Contrat de rendu (refactorisé — voir §4)** :
+- `IShape.draw()` ne dessine **rien** par défaut.
+- Chaque forme concrète implémente `fillShape()` (intérieur) et
+  `strokeShape()` (contour) — jamais `draw()` directement.
+- **Chaque décorateur appelle d'abord `wrapped.draw(gc)`** (les couches
+  internes se peignent), puis ajoute sa propre contribution par-dessus :
+  - `FillColorDecorator.draw()` = `wrapped.draw()` **puis** `wrapped.fillShape()`
+    en couleur de remplissage ;
+  - `BorderColorDecorator.draw()` = `wrapped.draw()` **puis**
+    `wrapped.strokeShape()` en couleur de bordure.
+
+C'est le contrat **canonique** du Decorator : la composition est valide
+quel que soit l'ordre d'empilement ; seul le **z-order** dépend de l'ordre
+(le décorateur externe peint au-dessus). En pratique `ToolPalette` empile
+toujours `Border(Fill(forme))` pour que le contour apparaisse au-dessus
+du remplissage, mais le code resterait correct si on inversait.
+
+**Conséquence assumée** — une forme sans aucun décorateur ne dessine rien
+(c'est le but : décocher *Bordure* + *Remplir* rend la forme invisible).
+Les lignes n'ont pas d'intérieur ; `ToolPalette` les enveloppe toujours
+d'un `BorderColorDecorator` dont la couleur vient du sélecteur principal.
 
 ```mermaid
 classDiagram
@@ -347,28 +412,58 @@ classDiagram
 on veut un point d'accès unique, une configuration centralisée, et éviter
 d'ouvrir plusieurs connexions PostgreSQL.
 
+**Implémentation — *holder idiom*** — Les deux Singletons utilisent une
+classe interne `Holder` qui détient l'instance dans un champ
+`static final`. Le JVM garantit qu'une classe n'est initialisée qu'**une
+seule fois** et que cette initialisation est **thread-safe** ; on obtient
+donc un Singleton **lazy** (le `Holder` n'est chargé qu'au premier appel
+à `getInstance()`) **ET** correct en multi-threading, sans `synchronized`
+ni `volatile`.
+
+```java
+public class Logger {
+    private Logger() { this.strategy = new LogConsole(); }
+
+    private static class Holder {
+        private static final Logger INSTANCE = new Logger();
+    }
+
+    public static Logger getInstance() { return Holder.INSTANCE; }
+}
+```
+
+> **Pourquoi pas `if (instance == null) instance = new Logger();` ?**
+> Sans `synchronized`/`volatile`, deux threads peuvent franchir le test et
+> créer deux instances — ce qui **viole la propriété même** que le Singleton
+> doit garantir. Pour `DatabaseConnection`, cela ouvrirait également deux
+> connexions JDBC dont une serait orpheline. Le *holder idiom* élimine
+> cette fenêtre de course sans coût d'exécution.
+
 ```mermaid
 classDiagram
     class Logger {
-        -instance : Logger$
         -Logger()
         +getInstance() Logger$
+        +setStrategy(ILogger)
+        +log(String)
+    }
+    class Logger_Holder {
+        <<static nested>>
+        +INSTANCE : Logger$
     }
     class DatabaseConnection {
-        -instance : DatabaseConnection$
         -DatabaseConnection()
         +getInstance() DatabaseConnection$
         +getConnection() Connection
         -openConnection() Connection
     }
-    Logger ..> Logger : instance unique
-    DatabaseConnection ..> DatabaseConnection : instance unique
+    class DatabaseConnection_Holder {
+        <<static nested>>
+        +INSTANCE : DatabaseConnection$
+    }
+    Logger ..> Logger_Holder : INSTANCE
+    DatabaseConnection ..> DatabaseConnection_Holder : INSTANCE
 ```
-
-> **Validation** : initialisation paresseuse non *thread-safe*
-> (`if (instance == null)`). Acceptable ici car tous les accès passent par
-> l'unique thread JavaFX (*Application Thread*) ; à signaler dans un contexte
-> multi-thread (utiliser *holder idiom* ou `synchronized`).
 
 ---
 
@@ -503,6 +598,66 @@ stylés avec survol (accent primaire pour *Plus court chemin / Enregistrer /
 Ouvrir*), fond du canevas **blanc** (au lieu de jaune). Aucune logique, aucun
 *callback*, aucune API publique modifiés.
 
+### D7 — Observer rendu fonctionnel (était présent mais inerte)
+*Problème détecté à l'audit* : les six classes de forme implémentaient
+`addObserver` / `removeObserver` / `notifyObservers`, et `DrawingCanvas`
+s'abonnait à chaque forme via `shape.addObserver(this)` — mais
+**aucun mutateur de forme n'appelait `notifyObservers()`**. Tous les
+redraws étaient déclenchés directement par les commandes
+(`canvas.redraw()` dans `ResizeShapeCommand.execute()/undo()`), ce qui
+court-circuitait totalement la chaîne Observer.
+*Correctif* :
+- `resize(...)` et `resizeTo(...)` des six formes (2D + 3D) appellent
+  `notifyObservers()` après modification de l'état ;
+- les `canvas.redraw()` explicites de `ResizeShapeCommand` sont supprimés ;
+- `ResizeShapeCommand` n'a plus de référence au `DrawingCanvas` du tout
+  (le champ et le paramètre de constructeur ont été retirés).
+Conséquence : le patron Observer porte enfin réellement la mise à jour
+modèle→vue, et la commande n'est plus couplée à la vue.
+
+### D8 — `ToolPalette` n'est plus *Observable*
+*Problème détecté à l'audit* : `ToolPalette` implémentait `IObservable` et
+notifiait à chaque clic d'outil ; seul `DrawingCanvas` était abonné, et
+son `update()` provoquait un `redraw()` alors qu'**aucun pixel n'avait
+changé** (sélectionner un outil ne modifie aucune forme). C'était un
+second canal de notification redondant avec les `Runnable` du constructeur
+de la palette, et un détournement du patron : la palette est un
+**contrôleur**, pas un modèle.
+*Correctif* : suppression de `implements IObservable`, du champ
+`observers` et des trois méthodes Observer dans `ToolPalette` ; suppression
+de `palette.addObserver(drawingCanvas)` dans `HelloFX`. Les événements
+de la palette continuent de passer par les `Runnable` / `Consumer` typés
+du constructeur — canal plus précis sémantiquement.
+
+### D9 — Decorator rendu compositionnel (bug d'ordre corrigé)
+*Problème détecté à l'audit* : `FillColorDecorator.draw()` n'appelait pas
+`wrapped.draw(gc)` avant de peindre son remplissage. Conséquence : la
+chaîne `Fill(Border(forme))` perdait silencieusement le contour
+(le `draw()` du `BorderColorDecorator` n'était jamais invoqué). Le code
+« marchait » parce que `ToolPalette` empile toujours `Border` à
+l'extérieur — invariant maintenu par un unique site d'appel, fragile.
+*Correctif* : `FillColorDecorator.draw()` commence désormais par
+`wrapped.draw(gc);`, comme `BorderColorDecorator` le faisait déjà. Tout
+empilement compose désormais correctement ; seul le z-order dépend de
+l'ordre, ce qui est précisément le rôle du Decorator.
+
+### D10 — Singletons thread-safe (*holder idiom*)
+*Problème détecté à l'audit* : `Logger.getInstance()` et
+`DatabaseConnection.getInstance()` utilisaient l'anti-pattern classique
+`if (instance == null) instance = new X()` — sans `synchronized` ni
+`volatile`, deux threads peuvent créer deux instances, ce qui viole la
+propriété fondamentale du Singleton (et ouvrirait deux connexions JDBC
+dans le cas de `DatabaseConnection`).
+*Correctif* : les deux Singletons utilisent désormais une classe interne
+`Holder` portant un champ `static final INSTANCE`. Le JVM garantit
+classe-init atomique, donc le Singleton est **lazy + thread-safe** sans
+synchronisation explicite. Voir §3.6.
+
+### D11 — Suppression de l'interface `Shape` vide (code mort)
+Le fichier `dp/DS/observer/Shape.java` ne contenait que
+`public interface Shape { }` — vestige d'un refactor antérieur, jamais
+importé ni implémenté ailleurs. Supprimé.
+
 ---
 
 ## 5. Conception UML — diagramme de classes
@@ -549,14 +704,15 @@ classDiagram
 
     ToolPalette ..> ShapeFactory : Factory Method
     ToolPalette ..> ShapeDecorator : Decorator
-    ToolPalette ..|> IShape : (notifie via Observer)
     ShapeFactory ..> IShape
     ShapeDecorator ..|> IShape
     ShapeDecorator o--> IShape : wrapped
+    IShape ..> IShape : notifyObservers (Subject)
 
     CommandManager o--> ICommand
-    ICommand ..> DrawingCanvas : Receiver
-    DrawingCanvas ..> IShape : dessine/observe
+    ICommand ..> DrawingCanvas : Receiver (add/erase)
+    ICommand ..> IShape : Receiver (resize)
+    DrawingCanvas ..> IShape : observe (update → redraw)
 
     Logger o--> ILogger : Strategy + Singleton
     PathCalculator o--> IShortestPathStrategy : Strategy
@@ -572,7 +728,7 @@ Les diagrammes détaillés par patron figurent en §3.
 
 ## 6. Diagrammes de séquence
 
-### 6.1 Dessiner une forme (Factory + Decorator + Command + Observer)
+### 6.1 Dessiner une forme (Factory + Decorator + Command)
 
 ```mermaid
 sequenceDiagram
@@ -594,7 +750,28 @@ sequenceDiagram
     C->>M: executeCommand(AddShapeCommand)
     M->>Cmd: execute()
     Cmd->>C: addShape(shape)
+    Note over C: addShape inscrit le canvas<br/>comme Observer de la forme,<br/>puis appelle redraw()
+```
+
+### 6.1bis Redimensionner une forme (Command + Observer)
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant H as HelloFX
+    participant M as CommandManager
+    participant Cmd as ResizeShapeCommand
+    participant S as IShape (forme cible)
+    participant C as DrawingCanvas
+
+    U->>H: choisit une taille + clic sur la forme
+    H->>M: executeCommand(new ResizeShapeCommand(s, size))
+    M->>Cmd: execute()
+    Cmd->>S: resizeTo(size)
+    S->>S: notifyObservers()
+    S->>C: update()
     C->>C: redraw()
+    Note over Cmd,C: La commande ne connaît pas le canvas :<br/>la vue se met à jour via Observer.
 ```
 
 ### 6.2 Changer la stratégie de journalisation (Strategy + Singleton)
@@ -640,29 +817,43 @@ sequenceDiagram
 
 **Patrons — conformité** : les 6 patrons GoF requis (Factory Method, Observer,
 Command, Decorator, Strategy, Singleton) sont présents, correctement structurés
-et réellement utilisés par l'IHM. L'étude de cas (plus court chemin) réutilise
+et réellement utilisés par l'IHM. Un audit ciblé a corrigé les cas où un patron
+était déclaré mais ne portait pas son comportement (D7, D8, D9, D10 — cf. §4) :
+chaque patron remplit désormais effectivement sa fonction au runtime, et plus
+seulement « structurellement ». L'étude de cas (plus court chemin) réutilise
 Strategy de façon cohérente avec la journalisation. La persistance illustre la
 collaboration Factory + Decorator + Singleton.
 
+**Résumé de l'audit** :
+
+| Patron | Avant audit | Après audit |
+|---|---|---|
+| Factory Method | ✅ | ✅ |
+| Command | ✅ | ✅ (Resize découplé du canvas, voir D7) |
+| Observer | ⚠ formes câblées mais ne notifiaient jamais ; ToolPalette à tort *Subject* | ✅ D7 + D8 |
+| Decorator | ⚠ `FillColorDecorator` n'appelait pas `wrapped.draw()` → ordre fragile | ✅ D9 |
+| Strategy | ✅ | ✅ |
+| Singleton | ⚠ init paresseuse non thread-safe | ✅ holder idiom (D10) |
+| Code mort | ⚠ interface `Shape` vide | ✅ supprimée (D11) |
+
 **Points d'amélioration relevés (non bloquants)** :
 
-1. `dp.DS.observer.Shape` est une **interface vide et non utilisée** → code
-   mort, à supprimer.
-2. Le package **`dp.DS.Factory`** a une majuscule, contrairement à la
+1. Le package **`dp.DS.Factory`** a une majuscule, contrairement à la
    convention Java (packages en minuscules) et aux autres packages du projet.
-3. Le package `observer` regroupe beaucoup de responsabilités (formes,
+2. Le package `observer` regroupe beaucoup de responsabilités (formes,
    canevas, palette, interfaces Observer). Cohésion perfectible — on pourrait
    séparer `shape` / `ui` / `observer` — mais acceptable pour le périmètre.
-4. Singletons à initialisation paresseuse **non thread-safe** (cf. §3.6).
-5. Identifiants PostgreSQL **en clair** dans `DatabaseConnection` (projet
+3. Identifiants PostgreSQL **en clair** dans `DatabaseConnection` (projet
    pédagogique — à externaliser dans une vraie application).
-6. Commentaire de `Graph` légèrement obsolète (« chaque cercle = un nœud »
+4. Commentaire de `Graph` légèrement obsolète (« chaque cercle = un nœud »
    alors que `GraphBuilder` prend toute forme non-ligne).
-7. La couleur d'une ligne est stockée dans la colonne `border_color` (détail
+5. La couleur d'une ligne est stockée dans la colonne `border_color` (détail
    d'implémentation : visuellement correct car la ligne est un *stroke*).
 
 **Conclusion** : structure saine, patrons bien démontrés et justifiés ; les
 remarques ci-dessus sont des finitions, pas des défauts de conception.
+Un diagramme de classes complet (toutes les classes du projet, toutes les
+relations) est fourni séparément dans **`CLASS_DIAGRAM.md`**.
 
 ---
 

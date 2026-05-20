@@ -14,7 +14,6 @@ import java.sql.Statement;
  */
 public class DatabaseConnection {
 
-    private static DatabaseConnection instance;
     private Connection connection;
 
     private static final String HOST = "jdbc:postgresql://localhost:5432/";
@@ -61,15 +60,20 @@ public class DatabaseConnection {
     }
 
     /**
-     * Retourne l'instance unique de DatabaseConnection (lazy initialization).
+     * Holder idiom : lazy + thread-safe sans synchronized ni volatile.
+     * Le JVM garantit qu'une classe n'est initialisée qu'une seule fois.
+     */
+    private static class Holder {
+        private static final DatabaseConnection INSTANCE = new DatabaseConnection();
+    }
+
+    /**
+     * Retourne l'instance unique de DatabaseConnection (lazy, thread-safe).
      *
      * @return l'instance unique
      */
     public static DatabaseConnection getInstance() {
-        if (instance == null) {
-            instance = new DatabaseConnection();
-        }
-        return instance;
+        return Holder.INSTANCE;
     }
 
     /**
